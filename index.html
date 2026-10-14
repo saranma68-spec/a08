@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Code Adventure นักผจญภัยพิชิตโลกดิจิทัล</title>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons (for some UI elements) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Google Fonts: Mitr for a friendly Thai appearance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Mitr', 'sans-serif'],
+                    },
+                    colors: {
+                        game: {
+                            bg: '#E0F7FA',
+                            primary: '#00BCD4',
+                            secondary: '#FF9800',
+                            accent: '#8BC34A',
+                            text: '#263238',
+                            panel: 'rgba(255, 255, 255, 0.9)'
+                        }
+                    },
+                    animation: {
+                        'bounce-slow': 'bounce 2s infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                        'pop': 'pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'shake': 'shake 0.5s ease-in-out',
+                        'walk-right': 'walkRight 0.5s linear forwards',
+                        'walk-left': 'walkLeft 0.5s linear forwards',
+                        'walk-up': 'walkUp 0.5s linear forwards',
+                        'walk-down': 'walkDown 0.5s linear forwards',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        pop: {
+                            '0%': { transform: 'scale(0.5)', opacity: '0' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        },
+                        shake: {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '25%': { transform: 'translateX(-5px)' },
+                            '75%': { transform: 'translateX(5px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #E0F7FA;
+            background-image: 
+                radial-gradient(circle at 100% 150%, #B2EBF2 24%, white 24%, white 28%, #B2EBF2 28%, #B2EBF2 36%, white 36%, white 40%, transparent 40%, transparent),
+                radial-gradient(circle at 0    150%, #B2EBF2 24%, white 24%, white 28%, #B2EBF2 28%, #B2EBF2 36%, white 36%, white 40%, transparent 40%, transparent);
+            background-size: 100px 100px;
+            color: #263238;
+            overflow-x: hidden;
+            touch-action: manipulation; /* Prevent double-tap zoom on mobile */
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08), inset 0 2px 0 rgba(255,255,255,0.8);
+            border: 4px solid #fff;
+        }
+
+        .map-path {
+            stroke-dasharray: 10;
+            animation: dash 20s linear infinite;
+        }
+
+        @keyframes dash {
+            to { stroke-dashoffset: -1000; }
+        }
+
+        /* Grid transitions for character movement */
+        .grid-character {
+            transition: all 0.4s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const playSound = (type) => {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            }
+        };
+
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled=false }) => {
+            const base = "font-bold py-3 px-6 rounded-2xl transition-all duration-200 transform active:scale-95 shadow-[0_6px_0_rgba(0,0,0,0.15)] flex items-center justify-center gap-2";
+            const variants = {
+                primary: "bg-game-primary text-white hover:bg-cyan-400 shadow-cyan-700",
+                secondary: "bg-game-secondary text-white hover:bg-orange-400 shadow-orange-700",
+                success: "bg-game-accent text-white hover:bg-green-400 shadow-green-700",
+                danger: "bg-red-500 text-white hover:bg-red-400 shadow-red-700",
+                outline: "bg-white text-gray-700 border-2 border-gray-200 hover:bg-gray-50 shadow-gray-300"
+            };
+            const disabledClass = disabled ? "opacity-50 cursor-not-allowed transform-none active:scale-100 shadow-none translate-y-[6px]" : "";
+            
+            return (
+                <button 
+                    className={`${base} ${variants[variant]} ${disabledClass} ${className}`}
+                    onClick={(e) => { if(!disabled) { playSound('click'); onClick(e); } }}
+                    disabled={disabled}
+                >
+                    {children}
+                </button>
+            );
+        };
+
+        const Modal = ({ isOpen, title, message, type='info', onClose, badge=null }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-pop">
+                    <div className="bg-white rounded-[2rem] max-w-sm w-full p-6 text-center shadow-2xl border-4 border-game-primary relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-32 bg-game-primary opacity-10"></div>
+                        
+                        {type === 'success' && <div className="text-7xl mb-2 animate-bounce-slow">🎉</div>}
+                        {type === 'error' && <div className="text-7xl mb-2 animate-shake">💡</div>}
+                        {type === 'info' && <div className="text-7xl mb-2 animate-float">🤖</div>}
+                        
+                        <h2 className={`text-2xl font-bold mb-3 ${type==='error' ? 'text-game-secondary' : 'text-game-primary'}`}>
+                            {title}
+                        </h2>
+                        <p className="text-lg text-gray-600 mb-6 relative z-10">{message}</p>
+                        
+                        {badge && (
+                            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-6 animate-pop delay-300">
+                                <div className="text-sm text-yellow-600 font-bold mb-1">ได้รับเหรียญตราใหม่!</div>
+                                <div className="text-4xl mb-2">{badge.icon}</div>
+                                <div className="font-bold text-yellow-800">{badge.name}</div>
+                            </div>
+                        )}
+                        
+                        <Button variant={type === 'success' ? 'success' : 'primary'} onClick={onClose} className="w-full text-xl">
+                            {type === 'success' ? 'ลุยต่อเลย!' : 'เข้าใจแล้ว'}
+                        </Button>
+                    </div>
+                </div>
+            );
+        };
+
+        const BlockCode = ({ type, onClick, isDeletable=false }) => {
+            const blocks = {
+                'UP': { color: 'bg-blue-500 shadow-blue-700', text: 'เดินขึ้น', icon: '⬆️' },
+                'DOWN': { color: 'bg-green-500 shadow-green-700', text: 'เดินลง', icon: '⬇️' },
+                'LEFT': { color: 'bg-yellow-500 shadow-yellow-700 text-black', text: 'เลี้ยวซ้าย', icon: '⬅️' },
+                'RIGHT': { color: 'bg-red-500 shadow-red-700', text: 'เลี้ยวขวา', icon: '➡️' },
+            };
+            const b = blocks[type];
+            if (!b) return null;
+
+            return (
+                <div 
+                    onClick={onClick}
+                    className={`${b.color} text-white font-bold px-4 py-2 rounded-xl shadow-[0_4px_0_rgba(0,0,0,0.2)] flex items-center gap-2 cursor-pointer active:translate-y-1 active:shadow-none transition-transform select-none ${isDeletable ? 'hover:opacity-80 relative group' : 'hover:scale-105'}`}
+                >
+                    <span className="text-xl">{b.icon}</span>
+                    <span>{b.text}</span>
+                    {isDeletable && (
+                        <div className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                            ✕
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const LevelLayout = ({ title, levelNum, children, onBack, onHint, hintText }) => {
+            const [showHint, setShowHint] = React.useState(false);
+            return (
+                <div className="min-h-screen flex flex-col p-4 max-w-4xl mx-auto">
+                    <div className="flex justify-between items-center mb-4">
+                        <button onClick={() => { playSound('click'); onBack(); }} className="bg-white p-3 rounded-full shadow-md text-gray-600 hover:bg-gray-50 active:scale-95 transition-transform">
+                            <i className="ph-bold ph-arrow-left text-2xl"></i>
+                        </button>
+                        <div className="bg-white px-6 py-2 rounded-full shadow-md border-2 border-game-primary font-bold text-game-primary text-lg">
+                            ด่านที่ {levelNum}: {title}
+                        </div>
+                        <button onClick={() => { playSound('click'); setShowHint(true); }} className="bg-game-secondary text-white p-3 rounded-full shadow-md hover:bg-orange-400 active:scale-95 transition-transform">
+                            <i className="ph-bold ph-lightbulb text-2xl"></i>
+                        </button>
+                    </div>
+                    
+                    <div className="flex-1 bg-white/80 backdrop-blur-md rounded-3xl p-4 md:p-6 shadow-xl border-4 border-white flex flex-col">
+                        {children}
+                    </div>
+
+                    <Modal 
+                        isOpen={showHint} 
+                        title="คำใบ้ช่วยคิด" 
+                        message={hintText} 
+                        onClose={() => setShowHint(false)} 
+                    />
+                </div>
+            );
+        };
+
+        const GridGame = ({ initialPos, targetPos, obstacles = [], gridSize = 4, onWin, onFail, presetProgram=[] }) => {
+            const [playerPos, setPlayerPos] = React.useState(initialPos);
+            const [program, setProgram] = React.useState(presetProgram);
+            const [isRunning, setIsRunning] = React.useState(false);
+            const [feedback, setFeedback] = React.useState("");
+
+            const resetGrid = () => {
+                setPlayerPos(initialPos);
+                setIsRunning(false);
+                setFeedback("");
+            };
+
+            const addCommand = (cmd) => {
+                if (isRunning || program.length >= 10) return;
+                setProgram([...program, cmd]);
+                playSound('click');
+            };
+
+            const removeCommand = (index) => {
+                if (isRunning) return;
+                const newP = [...program];
+                newP.splice(index, 1);
+                setProgram(newP);
+                playSound('click');
+            };
+
+            const executeProgram = async () => {
+                if (program.length === 0) return;
+                setIsRunning(true);
+                setFeedback("");
+                resetGrid(); // Reset position before running
+                
+                let currentX = initialPos.x;
+                let currentY = initialPos.y;
+                let crashed = false;
+
+                // Helper to wait
+                const wait = (ms) => new Promise(res => setTimeout(res, ms));
+
+                for (let i = 0; i < program.length; i++) {
+                    const cmd = program[i];
+                    let nextX = currentX;
+                    let nextY = currentY;
+
+                    if (cmd === 'UP') nextY -= 1;
+                    if (cmd === 'DOWN') nextY += 1;
+                    if (cmd === 'LEFT') nextX -= 1;
+                    if (cmd === 'RIGHT') nextX += 1;
+
+                    // Check bounds
+                    if (nextX < 0 || nextX >= gridSize || nextY < 0 || nextY >= gridSize) {
+                        crashed = true;
+                        setFeedback("โอ๊ะโอ! เดินชนขอบแผนที่แล้ว ลองแก้คำสั่งใหม่นะ");
+                        break;
+                    }
+
+                    // Check obstacles
+                    if (obstacles.some(obs => obs.x === nextX && obs.y === nextY)) {
+                        crashed = true;
+                        setFeedback("อุ๊ย! ชนต้นไม้หรือสิ่งกีดขวางแล้ว ลองหาทางอื่นดูนะ");
+                        break;
+                    }
+
+                    currentX = nextX;
+                    currentY = nextY;
+                    setPlayerPos({ x: currentX, y: currentY });
+                    
+                    // Sound effect for step
+                    playSound('click');
+                    await wait(500); // Animation delay
+                }
+
+                if (!crashed) {
+                    if (currentX === targetPos.x && currentY === targetPos.y) {
+                        setFeedback("เย้! ถึงจุดหมายแล้วเก่งมาก");
+                        setTimeout(() => onWin(), 500);
+                    } else {
+                        setFeedback("ยังไม่ถึงจุดหมายเลย ลองเพิ่มคำสั่งหรือเปลี่ยนเส้นทางดูนะ");
+                        setTimeout(() => onFail(), 1000);
+                    }
+                } else {
+                    setTimeout(() => onFail(), 1000);
+                }
+                setIsRunning(false);
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row gap-6 h-full">
+                    {/* Grid Area */}
+                    <div className="flex-1 flex flex-col items-center justify-center">
+                        <div 
+                            className="bg-green-100 p-2 rounded-2xl border-4 border-green-300 relative shadow-inner"
+                            style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+                                gap: '4px',
+                                width: '100%',
+                                maxWidth: '350px',
+                                aspectRatio: '1/1'
+                            }}
+                        >
+                            {/* Render grid cells */}
+                            {Array.from({ length: gridSize * gridSize }).map((_, idx) => {
+                                const x = idx % gridSize;
+                                const y = Math.floor(idx / gridSize);
+                                const isObstacle = obstacles.some(o => o.x === x && o.y === y);
+                                const isTarget = targetPos.x === x && targetPos.y === y;
+                                const isPlayer = playerPos.x === x && playerPos.y === y;
+
+                                return (
+                                    <div key={idx} className="bg-white/60 rounded-xl relative overflow-hidden shadow-sm flex items-center justify-center text-3xl">
+                                        {isObstacle && '🌳'}
+                                        {isTarget && !isPlayer && '⭐'}
+                                        {/* Player uses absolute positioning on the parent container for smooth transition, 
+                                            but placing inside cell statically if simple approach is preferred. 
+                                            Let's use absolute for smooth motion. */}
+                                    </div>
+                                );
+                            })}
+
+                            {/* Player absolute positioning overlay */}
+                            <div 
+                                className="absolute text-4xl grid-character z-10 flex items-center justify-center"
+                                style={{
+                                    width: `calc(100% / ${gridSize})`,
+                                    height: `calc(100% / ${gridSize})`,
+                                    left: `${(playerPos.x / gridSize) * 100}%`,
+                                    top: `${(playerPos.y / gridSize) * 100}%`,
+                                }}
+                            >
+                                <div className={isRunning ? 'animate-bounce' : 'animate-float'}>👦</div>
+                            </div>
+                        </div>
+                        {feedback && (
+                            <div className="mt-4 text-center font-bold text-game-secondary animate-pop">
+                                {feedback}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Programming Area */}
+                    <div className="flex-1 flex flex-col gap-4 bg-gray-50 p-4 rounded-2xl border-2 border-gray-200">
+                        <div className="flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-gray-700">กล่องเครื่องมือ</h3>
+                            <Button variant="outline" className="py-1 px-3 text-sm" onClick={() => {setProgram([]); resetGrid();}} disabled={isRunning}>ล้างคำสั่ง</Button>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-2">
+                            {['UP', 'DOWN', 'LEFT', 'RIGHT'].map(cmd => (
+                                <BlockCode key={cmd} type={cmd} onClick={() => addCommand(cmd)} />
+                            ))}
+                        </div>
+
+                        <div className="mt-4 flex-1">
+                            <h3 className="font-bold text-lg text-gray-700 mb-2">ลำดับคำสั่ง (แตะเพื่อลบ)</h3>
+                            <div className="bg-white min-h-[150px] p-3 rounded-xl border-2 border-dashed border-gray-300 flex flex-wrap gap-2 items-start content-start hide-scrollbar overflow-y-auto">
+                                {program.map((cmd, idx) => (
+                                    <BlockCode key={idx} type={cmd} onClick={() => removeCommand(idx)} isDeletable={true} />
+                                ))}
+                                {program.length === 0 && <span className="text-gray-400 text-sm">แตะบล็อกด้านบนเพื่อเพิ่มคำสั่ง</span>}
+                            </div>
+                        </div>
+
+                        <Button 
+                            variant="success" 
+                            className="w-full text-xl py-4 mt-2" 
+                            onClick={executeProgram} 
+                            disabled={isRunning || program.length === 0}
+                        >
+                            {isRunning ? 'กำลังทำงาน...' : '▶️ เริ่มทำงาน'}
+                        </Button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Level1 = ({ onComplete, onBack }) => {
+            const [modal, setModal] = React.useState(null);
+            
+            const handleWin = () => {
+                playSound('success');
+                setModal({
+                    type: 'success',
+                    title: 'เก่งมาก!',
+                    message: 'เธอสามารถนำคำสั่งมาเรียงต่อกันเป็นขั้นตอนเพื่อแก้ปัญหาได้สำเร็จ นี่คือหัวใจของการเขียนโปรแกรมเลยนะ!',
+                    badge: { icon: '🏅', name: 'นักคิดเป็นขั้นตอน' },
+                    onClose: () => onComplete('นักคิดเป็นขั้นตอน')
+                });
+            };
+
+            const handleFail = () => {
+                playSound('error');
+            };
+
+            return (
+                <LevelLayout 
+                    levelNum={1} 
+                    title="ป่าแห่งลำดับคำสั่ง" 
+                    onBack={onBack}
+                    hintText="ลองคิดภาพว่าเราเป็นตัวละครดูนะ แล้วนับช่องดูว่าต้องเดินขวากี่ช่อง เดินลงกี่ช่อง ถึงจะถึงเป้าหมาย"
+                >
+                    <p className="text-gray-700 mb-4 bg-blue-50 p-3 rounded-xl text-center">
+                        <strong>ภารกิจ:</strong> เรียงบล็อกคำสั่งพาเด็กน้อยไปเก็บดาว (⭐)
+                    </p>
+                    <GridGame 
+                        initialPos={{x: 0, y: 0}}
+                        targetPos={{x: 3, y: 0}}
+                        gridSize={4}
+                        onWin={handleWin}
+                        onFail={handleFail}
+                    />
+                    {modal && <Modal {...modal} />}
+                </LevelLayout>
+            );
+        };
+
+        const Level2 = ({ onComplete, onBack }) => {
+            const [modal, setModal] = React.useState(null);
+            
+            const handleWin = () => {
+                playSound('success');
+                setModal({
+                    type: 'success',
+                    title: 'ยอดเยี่ยม!',
+                    message: 'การหลบหลีกสิ่งกีดขวางคือการสร้างอัลกอริทึมที่ต้องมีการวางแผนล่วงหน้า เธอทำได้ดีมาก!',
+                    badge: { icon: '🧭', name: 'นักสำรวจอัลกอริทึม' },
+                    onClose: () => onComplete('นักสำรวจอัลกอริทึม')
+                });
+            };
+
+            return (
+                <LevelLayout 
+                    levelNum={2} 
+                    title="เขาวงกตอัลกอริทึม" 
+                    onBack={onBack}
+                    hintText="ต้องวางแผนหลบต้นไม้ (🌳) นะ ลองเดินลงมาก่อน แล้วค่อยเลี้ยวขวาดูสิ"
+                >
+                    <p className="text-gray-700 mb-4 bg-orange-50 p-3 rounded-xl text-center">
+                        <strong>ภารกิจ:</strong> พาเด็กน้อยไปเก็บดาว โดยห้ามเดินชนต้นไม้เด็ดขาด!
+                    </p>
+                    <GridGame 
+                        initialPos={{x: 0, y: 0}}
+                        targetPos={{x: 3, y: 3}}
+                        obstacles={[{x:1, y:0}, {x:1, y:1}, {x:2, y:3}]}
+                        gridSize={4}
+                        onWin={handleWin}
+                        onFail={() => playSound('error')}
+                    />
+                    {modal && <Modal {...modal} />}
+                </LevelLayout>
+            );
+        };
+
+        const Level3 = ({ onComplete, onBack }) => {
+            const [modal, setModal] = React.useState(null);
+            const pattern = ['🍎', '🍌', '🍎', '🍌', '🍎', '?'];
+            const options = ['🍉', '🍌', '🍇', '🍎'];
+            const correctOption = '🍌';
+            const [selected, setSelected] = React.useState(null);
+
+            const checkAnswer = (opt) => {
+                if (opt === correctOption) {
+                    setSelected(opt);
+                    playSound('success');
+                    setModal({
+                        type: 'success',
+                        title: 'ตาไวมาก!',
+                        message: 'การสังเกตและหารูปแบบที่ซ้ำกัน (Pattern Recognition) เป็นทักษะสำคัญของนักวิทยาการคำนวณเลยล่ะ',
+                        badge: { icon: '👁️', name: 'นักจับแพตเทิร์น' },
+                        onClose: () => onComplete('นักจับแพตเทิร์น')
+                    });
+                } else {
+                    playSound('error');
+                    setModal({
+                        type: 'error',
+                        title: 'ยังไม่ใช่น้า',
+                        message: 'ลองสังเกตลำดับดีๆ สิ แอปเปิ้ล แล้วก็ กล้วย สลับกันไปเรื่อยๆ อันต่อไปควรเป็นอะไร?',
+                        onClose: () => setModal(null)
+                    });
+                }
+            };
+
+            return (
+                <LevelLayout 
+                    levelNum={3} 
+                    title="เมืองแพตเทิร์น" 
+                    onBack={onBack}
+                    hintText="ดูว่าผลไม้เรียงสลับกันแบบไหน จากนั้นเลือกผลไม้ที่ควรจะมาแทนที่เครื่องหมาย ? นะ"
+                >
+                    <div className="flex flex-col items-center justify-center flex-1 space-y-10">
+                        <p className="text-gray-700 bg-pink-50 p-4 rounded-xl text-center text-lg max-w-lg">
+                            <strong>ภารกิจ:</strong> สังเกตรูปแบบของผลไม้ แล้วเลือกผลไม้ที่ถูกต้องมาใส่ในช่องว่าง
+                        </p>
+                        
+                        {/* Pattern Display */}
+                        <div className="flex gap-2 sm:gap-4 flex-wrap justify-center bg-gray-100 p-6 rounded-3xl border-4 border-gray-200">
+                            {pattern.map((item, idx) => (
+                                <div key={idx} className={`w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center text-4xl sm:text-5xl rounded-2xl shadow-sm ${item === '?' ? 'bg-white border-4 border-dashed border-gray-400 text-gray-400' : 'bg-white border-b-4 border-gray-300'}`}>
+                                    {item === '?' && selected ? selected : item}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Options */}
+                        <div className="w-full max-w-md">
+                            <h3 className="text-center font-bold text-gray-600 mb-4 text-xl">เลือกคำตอบ:</h3>
+                            <div className="grid grid-cols-4 gap-4">
+                                {options.map((opt, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => checkAnswer(opt)}
+                                        className="bg-white border-4 border-game-primary rounded-2xl p-4 text-5xl hover:bg-cyan-50 hover:scale-105 active:scale-95 transition-all shadow-md pb-6"
+                                    >
+                                        {opt}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    {modal && <Modal {...modal} />}
+                </LevelLayout>
+            );
+        };
+
+        const Level4 = ({ onComplete, onBack }) => {
+            const [modal, setModal] = React.useState(null);
+            
+            // Initial items
+            const [items, setItems] = React.useState([
+                { id: 1, icon: '🐶', type: 'animal' },
+                { id: 2, icon: '🚗', type: 'vehicle' },
+                { id: 3, icon: '🐱', type: 'animal' },
+                { id: 4, icon: '✈️', type: 'vehicle' },
+                { id: 5, icon: '🐰', type: 'animal' },
+                { id: 6, icon: '🚲', type: 'vehicle' },
+            ]);
+            
+            const [boxA, setBoxA] = React.useState([]); // Animals
+            const [boxB, setBoxB] = React.useState([]); // Vehicles
+            const [selectedItem, setSelectedItem] = React.useState(null);
+
+            const handleSelectItem = (item) => {
+                playSound('click');
+                setSelectedItem(item);
+            };
+
+            const moveToBox = (boxType) => {
+                if (!selectedItem) return;
+                playSound('click');
+                
+                // Remove from middle
+                setItems(items.filter(i => i.id !== selectedItem.id));
+                
+                // Add to specific box
+                if (boxType === 'A') {
+                    setBoxA([...boxA, selectedItem]);
+                } else {
+                    setBoxB([...boxB, selectedItem]);
+                }
+                
+                setSelectedItem(null);
+            };
+
+            // Optional: return item to middle if clicked in box
+            const returnItem = (item, fromBox) => {
+                playSound('click');
+                if (fromBox === 'A') setBoxA(boxA.filter(i => i.id !== item.id));
+                else setBoxB(boxB.filter(i => i.id !== item.id));
+                setItems([...items, item]);
+            };
+
+            const checkAnswer = () => {
+                if (items.length > 0) {
+                    setModal({ type: 'info', title: 'ยังแยกไม่เสร็จ', message: 'กรุณาจัดของใส่กล่องให้ครบทุกชิ้นก่อนนะ' });
+                    return;
+                }
+
+                const boxACorrect = boxA.every(i => i.type === 'animal');
+                const boxBCorrect = boxB.every(i => i.type === 'vehicle');
+
+                if (boxACorrect && boxBCorrect) {
+                    playSound('success');
+                    setModal({
+                        type: 'success',
+                        title: 'จัดระเบียบเป๊ะมาก!',
+                        message: 'การแบ่งกลุ่มข้อมูลที่เหมือนกันไว้ด้วยกัน (Classification) ช่วยให้เราจัดการข้อมูลได้ง่ายขึ้นเยอะเลย',
+                        badge: { icon: '📦', name: 'นักจัดระเบียบข้อมูล' },
+                        onClose: () => onComplete('นักจัดระเบียบข้อมูล')
+                    });
+                } else {
+                    playSound('error');
+                    setModal({
+                        type: 'error',
+                        title: 'มีบางอย่างผิดกลุ่มนะ',
+                        message: 'ลองตรวจสอบดูดีๆ ว่าสัตว์อยู่กล่องสัตว์ และยานพาหนะอยู่กล่องยานพาหนะหรือเปล่า แตะที่รูปในกล่องเพื่อเอาออกมาแก้ได้นะ',
+                        onClose: () => setModal(null)
+                    });
+                }
+            };
+
+            return (
+                <LevelLayout 
+                    levelNum={4} 
+                    title="โรงงานแยกข้อมูล" 
+                    onBack={onBack}
+                    hintText="แตะที่รูปภาพตรงกลาง 1 ครั้ง แล้วแตะที่ปุ่มใต้กล่องที่ต้องการนำไปใส่ หรือถ้าใส่ผิด ก็แตะรูปในกล่องเพื่อดึงกลับมาได้"
+                >
+                    <div className="flex flex-col h-full gap-4">
+                        <p className="text-gray-700 bg-green-50 p-3 rounded-xl text-center">
+                            <strong>ภารกิจ:</strong> จัดกลุ่มข้อมูล <span className="font-bold text-red-500">แตะเลือกรูปภาพ</span> แล้วเลือกส่งเข้ากล่องที่ถูกต้อง
+                        </p>
+
+                        {/* Unsorted Items */}
+                        <div className="bg-gray-100 min-h-[100px] rounded-2xl p-4 flex justify-center gap-3 flex-wrap border-2 border-dashed border-gray-300">
+                            {items.length === 0 && <span className="text-gray-400 flex items-center">ไม่มีของเหลือแล้ว กดตรวจคำตอบได้เลย!</span>}
+                            {items.map(item => (
+                                <div 
+                                    key={item.id} 
+                                    onClick={() => handleSelectItem(item)}
+                                    className={`text-5xl p-2 rounded-xl cursor-pointer transition-all ${selectedItem?.id === item.id ? 'bg-yellow-200 scale-110 shadow-lg ring-4 ring-yellow-400' : 'bg-white shadow-sm hover:-translate-y-1'}`}
+                                >
+                                    {item.icon}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Sorting Boxes */}
+                        <div className="flex gap-4 flex-1">
+                            {/* Box A */}
+                            <div className={`flex-1 bg-orange-50 rounded-2xl p-4 flex flex-col border-4 ${selectedItem ? 'border-orange-300 animate-pulse' : 'border-orange-100'}`}>
+                                <h3 className="text-center font-bold text-xl text-orange-800 mb-2">กล่อง "สัตว์"</h3>
+                                <div className="flex-1 flex flex-wrap gap-2 content-start bg-white/50 rounded-xl p-2 mb-4">
+                                    {boxA.map(item => (
+                                        <div key={item.id} onClick={() => returnItem(item, 'A')} className="text-4xl p-1 cursor-pointer hover:opacity-50" title="แตะเพื่อดึงกลับ">
+                                            {item.icon}
+                                        </div>
+                                    ))}
+                                </div>
+                                <Button variant="secondary" onClick={() => moveToBox('A')} disabled={!selectedItem} className="w-full">
+                                    ⬇️ ใส่กล่องนี้
+                                </Button>
+                            </div>
+
+                            {/* Box B */}
+                            <div className={`flex-1 bg-blue-50 rounded-2xl p-4 flex flex-col border-4 ${selectedItem ? 'border-blue-300 animate-pulse' : 'border-blue-100'}`}>
+                                <h3 className="text-center font-bold text-xl text-blue-800 mb-2">กล่อง "ยานพาหนะ"</h3>
+                                <div className="flex-1 flex flex-wrap gap-2 content-start bg-white/50 rounded-xl p-2 mb-4">
+                                    {boxB.map(item => (
+                                        <div key={item.id} onClick={() => returnItem(item, 'B')} className="text-4xl p-1 cursor-pointer hover:opacity-50" title="แตะเพื่อดึงกลับ">
+                                            {item.icon}
+                                        </div>
+                                    ))}
+                                </div>
+                                <Button variant="primary" onClick={() => moveToBox('B')} disabled={!selectedItem} className="w-full">
+                                    ⬇️ ใส่กล่องนี้
+                                </Button>
+                            </div>
+                        </div>
+
+                        <Button variant="success" className="py-4 text-xl mt-2" onClick={checkAnswer}>
+                            🔍 ตรวจคำตอบ
+                        </Button>
+                    </div>
+                    {modal && <Modal {...modal} />}
+                </LevelLayout>
+            );
+        };
+
+        const Level5 = ({ onComplete, onBack }) => {
+            const [modal, setModal] = React.useState(null);
+            
+            // Buggy preset: Robot wants to go from (0,0) to (2,2). Grid is 3x3.
+            // Right path: RIGHT, RIGHT, DOWN, DOWN.
+            // Buggy path provided: RIGHT, DOWN, LEFT, DOWN, RIGHT (Fails/wanders)
+            // Let's make it simpler: Target (2,0). Path: RIGHT, RIGHT. Bug: RIGHT, UP (crashes), RIGHT.
+            
+            const handleWin = () => {
+                playSound('success');
+                setModal({
+                    type: 'success',
+                    title: 'ยอดเยี่ยมที่สุด!',
+                    message: 'การหาจุดผิดพลาดแล้วแก้ไขให้ถูกต้อง (Debugging) เป็นทักษะขั้นสูงสุดของนักแก้ปัญหาเลยล่ะ!',
+                    badge: { icon: '🔧', name: 'นักแก้ปัญหา' },
+                    onClose: () => onComplete('นักแก้ปัญหา')
+                });
+            };
+
+            return (
+                <LevelLayout 
+                    levelNum={5} 
+                    title="ภารกิจนักแก้ปัญหา" 
+                    onBack={onBack}
+                    hintText="ลองกดเริ่มทำงานดูก่อนว่าหุ่นยนต์เดินไปทางไหนผิด แล้วค่อยลบบล็อกที่ผิดออก จากนั้นเติมบล็อกที่ถูกเข้าไปแทนนะ"
+                >
+                    <p className="text-gray-700 mb-4 bg-purple-50 p-3 rounded-xl text-center">
+                        <strong>ภารกิจ (Debugging):</strong> หุ่นยนต์มีคำสั่งที่ผิดพลาดอยู่ ช่วยหา <span className="text-red-500 font-bold">จุดที่ผิด</span> แล้วแก้ไขให้หุ่นยนต์เดินไปถึงบ้าน (🏠) หน่อยนะ
+                    </p>
+                    <GridGame 
+                        initialPos={{x: 0, y: 0}}
+                        targetPos={{x: 2, y: 2}}
+                        obstacles={[]}
+                        gridSize={3}
+                        presetProgram={['RIGHT', 'DOWN', 'LEFT', 'DOWN', 'RIGHT', 'RIGHT']} // Intentional buggy code
+                        onWin={handleWin}
+                        onFail={() => playSound('error')}
+                    />
+                    {modal && <Modal {...modal} />}
+                </LevelLayout>
+            );
+        };
+
+        const MapScreen = ({ unlockedLevel, onSelectLevel, badges }) => {
+            const levels = [
+                { id: 1, x: 20, y: 30, title: 'ป่าแห่งลำดับ' },
+                { id: 2, x: 50, y: 15, title: 'เขาวงกต' },
+                { id: 3, x: 80, y: 40, title: 'เมืองแพตเทิร์น' },
+                { id: 4, x: 60, y: 75, title: 'โรงงานแยกข้อมูล' },
+                { id: 5, x: 20, y: 80, title: 'ภารกิจแก้ปัญหา' },
+            ];
+
+            return (
+                <div className="min-h-screen flex flex-col p-4 md:p-8 max-w-5xl mx-auto relative">
+                    <div className="flex justify-between items-center mb-6 bg-white/90 p-4 rounded-3xl shadow-md backdrop-blur-sm z-10">
+                        <div>
+                            <h2 className="text-2xl font-bold text-game-primary">แผนที่โลกดิจิทัล 🗺️</h2>
+                            <p className="text-gray-600">เลือกด่านที่ปลดล็อกแล้วเพื่อออกผจญภัย</p>
+                        </div>
+                        <div className="flex gap-2">
+                            {badges.map((b, i) => (
+                                <div key={i} className="text-3xl bg-yellow-100 p-2 rounded-full border-2 border-yellow-400" title={b}>{b === 'นักคิดเป็นขั้นตอน' ? '🏅' : b === 'นักสำรวจอัลกอริทึม' ? '🧭' : b === 'นักจับแพตเทิร์น' ? '👁️' : b === 'นักจัดระเบียบข้อมูล' ? '📦' : '🔧'}</div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 bg-[#81C784] rounded-[3rem] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.2)] border-8 border-green-200">
+                        {/* Decorative elements */}
+                        <div className="absolute top-10 left-10 text-6xl opacity-50">🌲</div>
+                        <div className="absolute top-40 right-20 text-6xl opacity-50">☁️</div>
+                        <div className="absolute bottom-10 right-10 text-7xl opacity-50">⛰️</div>
+                        <div className="absolute bottom-32 left-32 text-6xl opacity-50">🍄</div>
+
+                        {/* Map Nodes */}
+                        {levels.map((level, index) => {
+                            const isUnlocked = level.id <= unlockedLevel;
+                            const isCurrent = level.id === unlockedLevel;
+                            const isCompleted = level.id < unlockedLevel;
+
+                            return (
+                                <div 
+                                    key={level.id}
+                                    className={`absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ${isUnlocked ? 'cursor-pointer hover:scale-110' : 'opacity-60 cursor-not-allowed grayscale'}`}
+                                    style={{ left: `${level.x}%`, top: `${level.y}%`, zIndex: 10 }}
+                                    onClick={() => {
+                                        if (isUnlocked) {
+                                            playSound('click');
+                                            onSelectLevel(level.id);
+                                        } else {
+                                            playSound('error');
+                                        }
+                                    }}
+                                >
+                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-xl border-4 ${isCompleted ? 'bg-game-accent border-white' : isCurrent ? 'bg-yellow-400 border-white animate-bounce-slow ring-4 ring-yellow-200' : 'bg-gray-400 border-gray-200'}`}>
+                                        {isCompleted ? '⭐' : !isUnlocked ? '🔒' : level.id}
+                                    </div>
+                                    <div className="bg-white px-3 py-1 rounded-full text-sm font-bold mt-2 shadow-md whitespace-nowrap text-gray-700">
+                                        {level.title}
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {/* Note: In a real advanced app we would draw SVG lines between coordinates. For this simple contained version, the nodes implicitly suggest the path. */}
+                    </div>
+                </div>
+            );
+        };
+
+        const StartScreen = ({ onStart }) => (
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                <div className="glass-card p-10 max-w-2xl w-full flex flex-col items-center animate-pop">
+                    <div className="text-8xl mb-6 flex animate-bounce-slow gap-4">
+                        <span>👦</span><span>🤖</span>
+                    </div>
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-game-primary mb-4 drop-shadow-sm leading-tight">
+                        Code Adventure <br/> 
+                        <span className="text-game-secondary text-3xl md:text-4xl">นักผจญภัยพิชิตโลกดิจิทัล</span>
+                    </h1>
+                    <p className="text-xl text-gray-700 mb-8 max-w-lg leading-relaxed">
+                        ยินดีต้อนรับนักสำรวจ! มาช่วยหุ่นยนต์ผู้พิทักษ์แก้ปัญหาด้วยการคิดอย่างเป็นขั้นตอนกันเถอะ ไม่มีการตอบผิด มีแต่การทดลองและเรียนรู้!
+                    </p>
+                    <Button variant="secondary" onClick={onStart} className="text-2xl px-12 py-5 rounded-full animate-pulse">
+                        🚀 เริ่มออกผจญภัย
+                    </Button>
+                </div>
+            </div>
+        );
+
+        const SummaryScreen = ({ badges, onRestart }) => (
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                <div className="glass-card p-8 md:p-12 max-w-2xl w-full flex flex-col items-center animate-pop">
+                    <div className="text-7xl mb-4">🏆</div>
+                    <h1 className="text-4xl font-extrabold text-game-primary mb-2">ภารกิจสำเร็จ!</h1>
+                    <p className="text-xl text-gray-700 mb-8">เธอคือสุดยอดนักแก้ปัญหาแห่งโลกดิจิทัล</p>
+                    
+                    <div className="bg-blue-50 p-6 rounded-3xl w-full mb-8 border-2 border-blue-200">
+                        <h3 className="text-2xl font-bold text-game-secondary mb-4">เหรียญตราเกียรติยศของเธอ</h3>
+                        <div className="flex flex-wrap justify-center gap-4">
+                            {badges.map((b, i) => {
+                                const icons = {'นักคิดเป็นขั้นตอน': '🏅', 'นักสำรวจอัลกอริทึม': '🧭', 'นักจับแพตเทิร์น': '👁️', 'นักจัดระเบียบข้อมูล': '📦', 'นักแก้ปัญหา': '🔧'};
+                                return (
+                                    <div key={i} className="bg-white p-3 rounded-2xl shadow-sm border-2 border-gray-100 flex flex-col items-center w-32 animate-pop" style={{animationDelay: `${i * 100}ms`}}>
+                                        <div className="text-4xl mb-2">{icons[b]}</div>
+                                        <div className="text-xs font-bold text-gray-600 leading-tight">{b}</div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="bg-green-50 p-4 rounded-xl text-green-800 font-bold mb-8 w-full border border-green-200">
+                        💡 สิ่งที่ได้เรียนรู้: การแก้ปัญหาที่ดี คือการแบ่งขั้นตอน สังเกตรูปแบบ จัดระเบียบข้อมูล และรู้จักแก้ไขเมื่อทำผิดพลาด (Debugging)
+                    </div>
+
+                    <Button variant="primary" onClick={onRestart} className="text-xl px-10">
+                        🔄 เล่นใหม่อีกครั้ง
+                    </Button>
+                </div>
+            </div>
+        );
+
+        const App = () => {
+            const [screen, setScreen] = React.useState('start'); // start, map, l1, l2, l3, l4, l5, summary
+            const [unlockedLevel, setUnlockedLevel] = React.useState(1);
+            const [badges, setBadges] = React.useState([]);
+
+            const handleCompleteLevel = (levelNum, badgeName) => {
+                if (!badges.includes(badgeName)) {
+                    setBadges([...badges, badgeName]);
+                }
+                
+                if (levelNum === 5) {
+                    setScreen('summary');
+                } else {
+                    if (unlockedLevel <= levelNum) {
+                        setUnlockedLevel(levelNum + 1);
+                    }
+                    setScreen('map');
+                }
+            };
+
+            const renderScreen = () => {
+                switch(screen) {
+                    case 'start': 
+                        return <StartScreen onStart={() => setScreen('map')} />;
+                    case 'map':
+                        return <MapScreen unlockedLevel={unlockedLevel} onSelectLevel={(lvl) => setScreen(`l${lvl}`)} badges={badges} />;
+                    case 'l1':
+                        return <Level1 onComplete={(badge) => handleCompleteLevel(1, badge)} onBack={() => setScreen('map')} />;
+                    case 'l2':
+                        return <Level2 onComplete={(badge) => handleCompleteLevel(2, badge)} onBack={() => setScreen('map')} />;
+                    case 'l3':
+                        return <Level3 onComplete={(badge) => handleCompleteLevel(3, badge)} onBack={() => setScreen('map')} />;
+                    case 'l4':
+                        return <Level4 onComplete={(badge) => handleCompleteLevel(4, badge)} onBack={() => setScreen('map')} />;
+                    case 'l5':
+                        return <Level5 onComplete={(badge) => handleCompleteLevel(5, badge)} onBack={() => setScreen('map')} />;
+                    case 'summary':
+                        return <SummaryScreen badges={badges} onRestart={() => {setUnlockedLevel(1); setBadges([]); setScreen('start');}} />;
+                    default:
+                        return <StartScreen onStart={() => setScreen('map')} />;
+                }
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {renderScreen()}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
